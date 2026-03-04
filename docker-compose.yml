@@ -1,0 +1,104 @@
+# SSO Playground — Docker Compose
+# Pocket ID (OIDC provider) + oauth2-proxy (reverse proxy) + Go demo app
+
+services:
+  # ── One-shot: generate self-signed TLS certificates ────────
+  cert-init:
+    image: alpine:3.20
+    entrypoint: ["/bin/sh", "/scripts/generate-certs.sh"]
+    volumes:
+      - certs:/certs
+      - ./scripts:/scripts:ro
+
+  # ── Pocket ID — OpenID Connect identity provider ───────────
+  pocket-id:
+    image: ghcr.io/pocket-id/pocket-id:latest
+    restart: unless-stopped
+    ports:
+      - "1411:1411"
+    environment:
+      APP_URL: ${POCKET_ID_APP_URL:-http://localhost:1411}
+      TRUST_PROXY: "true"
+      MAXMIND_LICENSE_KEY: ""          # optional; disables GeoLite DB download
+    volumes:
+      - pocket-id-data:/app/data
+    healthcheck:
+      test: ["CMD", "/app/pocket-id", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+
+  # ── oauth2-proxy — TLS-terminating OIDC reverse proxy ──────
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+    restart: unless-stopped
+    ports:
+      - "4443:4443"
+    environment:
+      # Provider — use internal Docker hostname for OIDC discovery
+      OAUTH2_PROXY_PROVIDER: oidc
+      OAUTH2_PROXY_OIDC_ISSUER_URL: http://pocket-id:1411
+      OAUTH2_PROXY_CLIENT_ID: ${OAUTH2_PROXY_CLIENT_ID}
+      OAUTH2_PROXY_CLIENT_SECRET: ${OAUTH2_PROXY_CLIENT_SECRET}
+
+      # Login page URL — browser-facing address for redirects
+      OAUTH2_PROXY_LOGIN_URL: ${POCKET_ID_APP_URL:-http://localhost:1411}/authorize
+
+      # URLs
+      OAUTH2_PROXY_REDIRECT_URL: ${OAUTH2_PROXY_REDIRECT_URL:-https://localhost:4443/oauth2/callback}
+
+      # Listener — HTTPS only
+      OAUTH2_PROXY_HTTPS_ADDRESS: "0.0.0.0:4443"
+      OAUTH2_PROXY_TLS_CERT_FILE: /certs/server.crt
+      OAUTH2_PROXY_TLS_KEY_FILE: /certs/server.key
+
+      # Upstream
+      OAUTH2_PROXY_UPSTREAMS: "http://demo-app:8080"
+
+      # Headers forwarded to upstream
+      OAUTH2_PROXY_PASS_USER_HEADERS: "true"
+      OAUTH2_PROXY_PASS_ACCESS_TOKEN: "true"
+
+      # Cookie
+      OAUTH2_PROXY_COOKIE_SECRET: ${OAUTH2_PROXY_COOKIE_SECRET}
+      OAUTH2_PROXY_COOKIE_SECURE: "true"
+      OAUTH2_PROXY_COOKIE_DOMAINS: "localhost"
+
+      # Auth
+      OAUTH2_PROXY_EMAIL_DOMAINS: "*"
+      OAUTH2_PROXY_INSECURE_OIDC_ALLOW_UNVERIFIED_EMAIL: "true"
+      OAUTH2_PROXY_SKIP_PROVIDER_BUTTON: "true"
+      OAUTH2_PROXY_CODE_CHALLENGE_METHOD: "S256"
+
+      # Issuer verification — internal URL differs from JWT iss claim
+      OAUTH2_PROXY_INSECURE_OIDC_SKIP_ISSUER_VERIFICATION: "true"
+
+      # Scopes
+      OAUTH2_PROXY_SCOPE: "openid email profile"
+    volumes:
+      - certs:/certs:ro
+    depends_on:
+      cert-init:
+        condition: service_completed_successfully
+      pocket-id:
+        condition: service_healthy
+
+  # ── Demo App — Go JSON API showing OIDC claims ─────────────
+  demo-app:
+    build:
+      context: ./demo-app
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  certs:
+  pocket-id-data:

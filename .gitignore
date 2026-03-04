@@ -27,6 +27,12 @@ go.work.sum
 # env file
 .env
 
+# Generated TLS certificates
+certs/
+
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
