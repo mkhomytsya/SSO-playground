@@ -18,6 +18,7 @@ services:
       - "1411:1411"
     environment:
       APP_URL: ${POCKET_ID_APP_URL:-http://localhost:1411}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       TRUST_PROXY: "true"
       MAXMIND_LICENSE_KEY: ""          # optional; disables GeoLite DB download
     volumes:

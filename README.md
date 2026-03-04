@@ -54,10 +54,13 @@ cd SSO-playground
 cp .env.example .env
 ```
 
-### 2. Generate a cookie secret
+### 2. Generate secrets
 
 ```bash
-# Paste the output into .env as OAUTH2_PROXY_COOKIE_SECRET
+# Pocket ID encryption key (≥ 16 bytes) — paste into .env as ENCRYPTION_KEY
+openssl rand -hex 16
+
+# oauth2-proxy cookie secret — paste into .env as OAUTH2_PROXY_COOKIE_SECRET
 openssl rand -base64 32
 ```
 
@@ -157,6 +160,7 @@ All configuration is done via the `.env` file. See [.env.example](.env.example) 
 | Variable | Description |
 |----------|-------------|
 | `POCKET_ID_APP_URL` | Public URL for Pocket ID (default: `http://localhost:1411`) |
+| `ENCRYPTION_KEY` | Pocket ID encryption key — at least 16 bytes (`openssl rand -hex 16`) |
 | `OAUTH2_PROXY_CLIENT_ID` | OIDC Client ID from Pocket ID |
 | `OAUTH2_PROXY_CLIENT_SECRET` | OIDC Client Secret from Pocket ID |
 | `OAUTH2_PROXY_COOKIE_SECRET` | 32-byte base64 secret for session cookies |
